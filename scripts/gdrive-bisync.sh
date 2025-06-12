@@ -1,118 +1,117 @@
 #!/bin/bash
 
-# gdrive-bisync: A cross-platform utility for two-way syncing folders with Google Drive using rclone.
-# Supports setup, teardown, on-demand sync, cron scheduling, and more.
+# gdrive-bisync: A utility for two-way syncing local and Google Drive folders using rclone bisync.
 
 set -e
 
 REPO_DIR="$(dirname "$0")"
 CONFIG_DIR="$HOME/.config/rclone"
-RCLONE_REMOTE="gdrive"
 
 show_help() {
     cat << EOF
 Usage: gdrive-bisync.sh <command> [options]
 
 Commands:
-  install               Install latest stable rclone (cross-platform)
-  auth                  Run secure authentication for Google Drive
-  setup <local> <remote>  Setup folder mapping and initialize bisync
-  sync                  Perform an on-demand two-way sync
-  resync                Force resync and rebuild state
-  teardown              Remove sync configuration and state
-  cron-enable <schedule> Add syncing to cron (e.g. "*/30 * * * *")
-  cron-disable          Remove cron job for syncing
-  help                  Show this help message
+  install                               Install latest stable rclone
+  auth                                  Run rclone config auth flow
+  setup <remote> <local> <remote_dir>   Setup folder mapping and initialize bisync
+  sync <remote> <local> <remote_dir>    Perform a two-way sync
+  resync <remote> <local> <remote_dir>  Force resync and rebuild state
+  teardown <local>                      Remove sync config/state
+  cron-enable "<schedule>" <remote> <local> <remote_dir>  Schedule sync via cron
+  cron-disable                          Remove sync cron job
+  help                                  Show this help message
 EOF
 }
 
 install_rclone() {
-    cat << EOF
-install - Install the latest stable version of rclone.
-This ensures compatibility with bisync and cloud support features.
-EOF
     echo "Installing latest stable rclone..."
     curl https://rclone.org/install.sh | sudo bash
     echo "rclone installed successfully."
 }
 
 auth_rclone() {
-    cat << EOF
-auth - Launch secure authentication flow for Google Drive via rclone.
-This allows rclone to access your Google Drive after OAuth approval.
-EOF
     echo "Starting rclone configuration for Google Drive..."
     rclone config
 }
 
 setup_sync() {
-    cat << EOF
-setup - Initialize bisync mapping between local and remote folders.
-Usage: setup <local_path> <remote_path>
-EOF
-    local LOCAL_DIR="$1"
-    local REMOTE_DIR="$2"
+    local RCLONE_REMOTE="$1"
+    local LOCAL_DIR="$2"
+    local REMOTE_DIR="$3"
 
-    if [[ -z "$LOCAL_DIR" || -z "$REMOTE_DIR" ]]; then
-        echo "Error: You must specify a local and remote folder."
+    if [[ -z "$RCLONE_REMOTE" || -z "$LOCAL_DIR" || -z "$REMOTE_DIR" ]]; then
+        echo "Error: You must specify remote, local, and remote directory."
         exit 1
     fi
 
     mkdir -p "$LOCAL_DIR"
-    echo "Initializing bisync between $LOCAL_DIR and $RCLONE_REMOTE:$REMOTE_DIR..."
+    echo "Initializing full hierarchy bisync between $LOCAL_DIR and $RCLONE_REMOTE:$REMOTE_DIR..."
     rclone bisync "$LOCAL_DIR" "$RCLONE_REMOTE:$REMOTE_DIR" --resync
     echo "Setup complete."
 }
 
 run_sync() {
-    cat << EOF
-sync - Perform an on-demand two-way synchronization.
-Runs rclone bisync with INFO logging.
-EOF
-    echo "Running bisync..."
+    local RCLONE_REMOTE="$1"
+    local LOCAL_DIR="$2"
+    local REMOTE_DIR="$3"
+
+    if [[ -z "$RCLONE_REMOTE" || -z "$LOCAL_DIR" || -z "$REMOTE_DIR" ]]; then
+        echo "Error: You must specify remote, local, and remote directory."
+        exit 1
+    fi
+
+    echo "Performing recursive bisync of full directory structure..."
     rclone bisync "$LOCAL_DIR" "$RCLONE_REMOTE:$REMOTE_DIR" --log-level INFO
+
 }
 
 force_resync() {
-    cat << EOF
-resync - Force reinitialization of sync state and scan changes again.
-Useful for resolving state inconsistencies or missing files.
-EOF
-    echo "Forcing resync (may take time)..."
+    local RCLONE_REMOTE="$1"
+    local LOCAL_DIR="$2"
+    local REMOTE_DIR="$3"
+
+    if [[ -z "$RCLONE_REMOTE" || -z "$LOCAL_DIR" || -z "$REMOTE_DIR" ]]; then
+        echo "Error: You must specify remote, local, and remote directory."
+        exit 1
+    fi
+
+    echo "Forcing full hierarchy resync (clearing state)..."
     rclone bisync "$LOCAL_DIR" "$RCLONE_REMOTE:$REMOTE_DIR" --resync
+    echo "Resync complete."
     echo "Resync complete."
 }
 
 teardown_sync() {
-    cat << EOF
-teardown - Removes the local rclone bisync state files.
-Use this before remapping or cleaning a sync relationship.
-EOF
-    echo "Tearing down sync configuration..."
+    local LOCAL_DIR="$1"
+
+    if [[ -z "$LOCAL_DIR" ]]; then
+        echo "Error: You must specify the local directory."
+        exit 1
+    fi
+
+    echo "Tearing down bisync state..."
     rm -rf "$LOCAL_DIR/.rclone"
     echo "Sync state removed."
 }
 
 cron_enable() {
-    cat << EOF
-cron-enable - Add a cron job for automatic syncing.
-Usage: cron-enable "<cron_schedule>"
-Example: cron-enable "*/15 * * * *"
-EOF
     local SCHEDULE="$1"
-    if [[ -z "$SCHEDULE" ]]; then
-        echo "Error: You must provide a cron schedule string."
+    local RCLONE_REMOTE="$2"
+    local LOCAL_DIR="$3"
+    local REMOTE_DIR="$4"
+
+    if [[ -z "$SCHEDULE" || -z "$RCLONE_REMOTE" || -z "$LOCAL_DIR" || -z "$REMOTE_DIR" ]]; then
+        echo "Error: You must provide schedule, remote, local, and remote_dir."
         exit 1
     fi
+
     local CMD="rclone bisync \"$LOCAL_DIR\" \"$RCLONE_REMOTE:$REMOTE_DIR\" --log-level INFO --log-file=$HOME/rclone-cron.log"
     (crontab -l 2>/dev/null; echo "$SCHEDULE $CMD") | crontab -
-    echo "Cron job added."
+    echo "Cron job added for recursive bisync."
 }
 
 cron_disable() {
-    cat << EOF
-cron-disable - Remove the previously set rclone bisync cron job.
-EOF
     crontab -l | grep -v "rclone bisync" | crontab -
     echo "Cron job removed."
 }
@@ -125,19 +124,19 @@ case "$1" in
         auth_rclone
         ;;
     setup)
-        setup_sync "$2" "$3"
+        setup_sync "$2" "$3" "$4"
         ;;
     sync)
-        run_sync
+        run_sync "$2" "$3" "$4"
         ;;
     resync)
-        force_resync
+        force_resync "$2" "$3" "$4"
         ;;
     teardown)
-        teardown_sync
+        teardown_sync "$2"
         ;;
     cron-enable)
-        cron_enable "$2"
+        cron_enable "$2" "$3" "$4" "$5"
         ;;
     cron-disable)
         cron_disable

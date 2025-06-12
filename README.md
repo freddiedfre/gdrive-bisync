@@ -48,11 +48,24 @@ chmod +x scripts/gdrive-bisync.sh
 ### Example
 
 ```bash
+# Inital rclone installation
 ./scripts/gdrive-bisync.sh install
+
+# Inital rclone authentication
 ./scripts/gdrive-bisync.sh auth
-./scripts/gdrive-bisync.sh setup ~/Documents/myfolder mydrivefolder
-./scripts/gdrive-bisync.sh sync
-./scripts/gdrive-bisync.sh cron-enable "*/30 * * * *"
+
+# One-time setup
+./gdrive-bisync.sh setup my-rclone-remote-host path-to-local-folder path-to-hosted-folder
+
+# Regular sync
+./scripts/gdrive-bisync.sh sync my-rclone-remote-host path-to-local-folder path-to-hosted-folder
+
+# Resync if things are broken
+./scripts/gdrive-bisync.sh resync my-rclone-remote-host path-to-local-folder path-to-hosted-folder
+
+# Enable sync every 15 minutes
+./scripts/gdrive-bisync.sh cron-enable "*/15 * * * *" my-rclone-remote-host path-to-local-folder path-to-hosted-folder
+
 ```
 
 ## File Structure
